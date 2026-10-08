@@ -1,0 +1,5 @@
+group: t
+rules:
+  - name: A
+    expr: "up"
+    severity: warning       # <- нет threshold и summary

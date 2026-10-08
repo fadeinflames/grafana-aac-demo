@@ -1,0 +1,19 @@
+# Группа алертов: доступность сервисов по метрике `up`.
+# `up` создаёт сам Prometheus для каждой цели скрейпа: 1 — отвечает, 0 — не отвечает.
+# Проверить вручную:  docker compose stop node-exporter   (через ~2 минуты придёт алерт)
+#                     docker compose start node-exporter  (алерт восстановится)
+group: service-availability
+interval: 1m
+
+rules:
+  - name: TargetDown
+    expr: 'up'                 # по одной серии на каждую цель -> по одному алерту на цель
+    operator: lt
+    threshold: 1               # up < 1  значит  up == 0
+    for: 2m
+    severity: critical
+    summary: "Сервис {{ $labels.job }} ({{ $labels.instance }}) недоступен"
+    description: "Prometheus не может забрать метрики с {{ $labels.instance }} уже 2 минуты."
+    runbook_url: https://example.org/runbooks/target-down
+    labels:
+      team: platform

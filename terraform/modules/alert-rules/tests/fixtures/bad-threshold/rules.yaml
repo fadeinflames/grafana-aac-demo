@@ -1,0 +1,7 @@
+group: t
+rules:
+  - name: A
+    expr: "up"
+    threshold: "85%"        # <- не число
+    severity: warning
+    summary: test

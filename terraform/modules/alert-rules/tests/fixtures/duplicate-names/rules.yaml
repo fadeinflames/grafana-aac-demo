@@ -1,0 +1,4 @@
+group: t
+rules:
+  - {name: A, expr: "up", threshold: 1, severity: warning, summary: one}
+  - {name: A, expr: "up", threshold: 2, severity: warning, summary: two}

@@ -1,0 +1,31 @@
+# Конфиг Prometheus для учебного стенда.
+# Prometheus сам ХОДИТ ("скрейпит") по адресам ниже раз в 15 секунд и забирает метрики.
+# Имена хостов (grafana, node-exporter ...) — это имена сервисов из docker-compose.yml,
+# они работают только ВНУТРИ docker-сети стенда.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # 1. Prometheus смотрит на самого себя
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  # 2. Grafana отдаёт свои внутренние метрики на /metrics
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+
+  # 3. node-exporter — реальные метрики "железа" (CPU, память, диск, сеть)
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # 4. Генератор тестовых метрик (Pushgateway).
+  #    Скрипты стенда кладут в него значение demo_test_value, а Prometheus его забирает.
+  #    honor_labels: true — НЕ перезаписывать метки job/instance, которые прислал клиент.
+  - job_name: test-generator
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]

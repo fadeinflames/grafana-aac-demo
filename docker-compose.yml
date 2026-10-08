@@ -1,0 +1,222 @@
+# ============================================================================
+#  Учебный стенд "Grafana as Code".
+#  Запуск:  docker compose up -d --wait      (или:  make up)
+#  Всё настраивается через файл .env (см. .env.example).
+#
+#  ВАЖНО: версии образов зафиксированы (никаких `latest`) — чтобы у всех
+#  участников стенд вёл себя одинаково. Список версий — в README.md.
+#
+#  Порты опубликованы на 127.0.0.1 — то есть доступны только с вашего
+#  компьютера, а не из локальной сети.
+# ============================================================================
+
+name: grafana-aac
+
+services:
+  # ---------------------------------------------------------------- Grafana
+  # Намеренно БЕЗ provisioning-каталогов: сама Grafana ничего не создаёт.
+  # Датасорсы, папки, дашборды и алерты приходят только из Terraform.
+  grafana:
+    image: grafana/grafana:12.2.0
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin12345}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      # Минимальный интервал проверки алертов. По умолчанию 10s; ставим явно,
+      # чтобы на стенде алерты срабатывали за минуту, а не за пять.
+      GF_UNIFIED_ALERTING_MIN_INTERVAL: 10s
+      # Нужен для ссылок в уведомлениях
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-3000}/
+    volumes:
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  # ------------------------------------------------------------- Prometheus
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./stand/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      node-exporter:
+        condition: service_healthy
+      pushgateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------- node-exporter
+  # Метрики хоста. На Docker Desktop (Windows/WSL2) это метрики виртуальной
+  # машины Docker, а не самой Windows — для демо этого достаточно.
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    ports:
+      - "127.0.0.1:${NODE_EXPORTER_PORT:-9100}:9100"
+    command:
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|etc|var/lib/docker/.+)($$|/)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9100/metrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # ------------------------------------------- Генератор тестовых метрик
+  # Pushgateway — "почтовый ящик" для метрик. Скрипты стенда кладут сюда
+  # demo_test_value (0 = всё хорошо, 100 = авария), Prometheus его забирает.
+  pushgateway:
+    image: prom/pushgateway:v1.11.1
+    ports:
+      - "127.0.0.1:${PUSHGATEWAY_PORT:-9091}:9091"
+    command:
+      - --persistence.file=/pushgateway/metrics.db
+      - --persistence.interval=1m
+    volumes:
+      - pushgateway-data:/pushgateway
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # ------------------------------------------------ Приёмник вебхуков
+  # Сюда Grafana шлёт уведомления. В браузере видно каждый запрос целиком.
+  # AUTO_CREATE_SESSIONS: любой URL вида /<uuid> сразу становится "почтовым ящиком".
+  webhook:
+    image: tarampampam/webhook-tester:2.3.0
+    ports:
+      - "127.0.0.1:${WEBHOOK_PORT:-8081}:8080"
+    environment:
+      AUTO_CREATE_SESSIONS: "true"
+      MAX_REQUESTS: "200"
+    healthcheck:
+      test: ["CMD", "/bin/app", "start", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # ------------------------------------------ MinIO: S3 для Terraform state
+  # Имитирует удалённый backend. В бою это будет ваш S3 / GitLab / Terraform Cloud и т.п.
+  minio:
+    image: ${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z}
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # ------------------------------------------------------------ bootstrap
+  # Одноразовый сервис: создаёт бакет в MinIO и service account + токен в Grafana,
+  # а токен кладёт в ./.secrets/terraform.env (файл в .gitignore).
+  # Безопасно запускать повторно: при каждом запуске выдаётся новый токен.
+  bootstrap:
+    image: python:3.13-alpine
+    working_dir: /scripts
+    command: ["python", "bootstrap.py"]
+    environment:
+      GRAFANA_INTERNAL_URL: http://grafana:3000
+      GRAFANA_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin12345}
+      MINIO_INTERNAL_URL: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      TF_STATE_BUCKET: ${TF_STATE_BUCKET:-tfstate}
+      # URL'ы, которые попадут в terraform.env для запуска Terraform с вашего компьютера
+      HOST_GRAFANA_URL: http://localhost:${GRAFANA_PORT:-3000}
+      HOST_MINIO_URL: http://localhost:${MINIO_API_PORT:-9000}
+      OUT_DIR: /out
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./.secrets:/out
+    depends_on:
+      grafana:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  # ---------------------------------------------------------------- tools
+  # Контейнер с Python для служебных скриптов (alert-fire, smoke и т.д.).
+  # Нужен, чтобы на Windows не ставить Python/curl/jq. Запускается командами
+  # `make ...` через `docker compose run --rm tools ...`, поэтому в профиле.
+  tools:
+    profiles: ["tools"]
+    image: python:3.13-alpine
+    working_dir: /scripts
+    environment:
+      GRAFANA_URL: http://grafana:3000
+      PROMETHEUS_URL: http://prometheus:9090
+      PUSHGATEWAY_URL: http://pushgateway:9091
+      WEBHOOK_URL: http://webhook:8080
+      REPO_ROOT: /repo
+      GRAFANA_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin12345}
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./alerts:/repo/alerts:ro
+      - ./dashboards:/repo/dashboards:ro
+
+  # ------------------------------------------- self-hosted GitHub runner
+  # ОПЦИОНАЛЬНО (профиль ci). GitHub-hosted раннеры не достучатся до localhost,
+  # поэтому раннер живёт в той же docker-сети, что и Grafana.
+  # См. docs/06-ci-setup.md. Запуск: docker compose --profile ci up -d --build
+  github-runner:
+    profiles: ["ci"]
+    build:
+      context: ./stand/runner
+    environment:
+      REPO_URL: ${RUNNER_REPO_URL:-}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      RUNNER_NAME: ${RUNNER_NAME:-grafana-aac-stand-runner}
+      RUNNER_WORKDIR: /tmp/runner/work
+      LABELS: ${RUNNER_LABELS:-grafana-aac-stand}
+      EPHEMERAL: "false"
+      DISABLE_AUTO_UPDATE: "true"
+    volumes:
+      - runner-work:/tmp/runner/work
+    depends_on:
+      grafana:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  pushgateway-data:
+  minio-data:
+  runner-work:

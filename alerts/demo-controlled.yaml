@@ -1,0 +1,31 @@
+# Группа с УПРАВЛЯЕМЫМ тестовым алертом — для проверки всей цепочки руками.
+#   make alert-fire     -> demo_test_value = 100 -> алерт Pending -> Firing -> вебхук
+#   make alert-resolve  -> demo_test_value = 0   -> алерт Normal  -> вебхук "resolved"
+# Интервал и `for` специально короткие, чтобы не ждать минутами.
+group: demo-controlled
+interval: 10s
+
+rules:
+  - name: DemoControlledTestAlert
+    expr: 'max(demo_test_value)'
+    operator: gt
+    threshold: 50
+    for: 20s
+    severity: warning
+    summary: "Тестовый алерт: demo_test_value = {{ $values.B.Value }}"
+    description: "Это учебный алерт. Он срабатывает командой `make alert-fire` и снимается `make alert-resolve`."
+    runbook_url: https://example.org/runbooks/demo
+    labels:
+      team: demo
+
+  - name: DemoControlledCriticalAlert
+    expr: 'max(demo_test_value)'
+    operator: gt
+    threshold: 150             # срабатывает только при `make alert-fire-critical` (значение 200)
+    for: 20s
+    severity: critical         # попадёт в другой контактный пункт (см. маршрутизацию)
+    summary: "Тестовый CRITICAL-алерт: demo_test_value = {{ $values.B.Value }}"
+    description: "Показывает маршрутизацию по severity=critical."
+    runbook_url: https://example.org/runbooks/demo
+    labels:
+      team: demo

@@ -1,0 +1,13 @@
+{{/*
+  Шаблон текста уведомления. Загружается в Grafana ресурсом grafana_message_template
+  и подключается к contact point через {{ template "aac.message" . }}.
+  Подробнее о синтаксисе: https://grafana.com/docs/grafana/latest/alerting/configure-notifications/template-notifications/
+*/}}
+{{ define "aac.message" -}}
+[{{ .Status | toUpper }}] firing: {{ len .Alerts.Firing }}, resolved: {{ len .Alerts.Resolved }}
+{{ range .Alerts -}}
+* {{ .Labels.alertname }} (severity={{ .Labels.severity }}): {{ .Annotations.summary }}
+{{ if .Annotations.runbook_url }}  Runbook: {{ .Annotations.runbook_url }}
+{{ end -}}
+{{ end -}}
+{{- end }}

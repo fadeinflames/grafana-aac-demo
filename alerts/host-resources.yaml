@@ -1,0 +1,39 @@
+# ============================================================================
+#  Группа алертов: ресурсы хоста (метрики из node-exporter).
+#  ОДИН ФАЙЛ = ОДНА ГРУППА ПРАВИЛ (rule group) в Grafana.
+#
+#  Как добавить алерт: скопируйте один блок из `rules:` и поправьте.
+#  Подробный разбор — docs/04-tutorial-add-alert.md
+#
+#  Обязательные поля правила:  name, expr, threshold, severity, summary
+#  Всё остальное — необязательно (разумные значения по умолчанию заданы в
+#  terraform/modules/alert-rules).
+# ============================================================================
+group: host-resources     # имя группы в Grafana (по умолчанию — имя файла)
+interval: 1m              # как часто проверять правила группы (по умолчанию 1m)
+
+rules:
+  - name: HostHighCpuUsage          # уникальное имя (в рамках файла)
+    # PromQL-запрос. Должен вернуть ЧИСЛО (или по числу на каждый хост).
+    expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100)'
+    operator: gt                    # gt = "больше порога", lt = "меньше порога"
+    threshold: 85                   # порог: срабатывает, если expr > 85
+    for: 5m                         # держится дольше 5 минут -> Firing (до этого Pending)
+    severity: warning               # critical | warning | info — по нему идёт маршрутизация
+    summary: "Высокая загрузка CPU на {{ $labels.instance }}"
+    description: "CPU загружен на {{ $values.B.Value | printf \"%.1f\" }}% (порог 85%) дольше 5 минут."
+    runbook_url: https://example.org/runbooks/host-high-cpu    # замените на свою wiki
+    labels:
+      team: platform
+
+  - name: HostHighMemoryUsage
+    expr: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100'
+    operator: gt
+    threshold: 90
+    for: 5m
+    severity: critical
+    summary: "Заканчивается память на {{ $labels.instance }}"
+    description: "Занято {{ $values.B.Value | printf \"%.1f\" }}% оперативной памяти (порог 90%)."
+    runbook_url: https://example.org/runbooks/host-high-memory
+    labels:
+      team: platform

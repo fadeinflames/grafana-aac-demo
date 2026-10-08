@@ -1,0 +1,31 @@
+# --- Секреты и локальное состояние (НИКОГДА не коммитить) ---
+.env
+.secrets/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# --- Служебные каталоги Terraform ---
+.terraform/
+# .terraform.lock.hcl НАМЕРЕННО не игнорируем — его надо коммитить.
+tfplan
+*.tfplan
+plan.txt
+
+# --- Прочее ---
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Локальные lock-файлы модулей (lock коммитится только в terraform/envs/*)
+terraform/modules/**/.terraform.lock.hcl

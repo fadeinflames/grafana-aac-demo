@@ -1,0 +1,18 @@
+# Хост — Windows. Git по умолчанию превращает LF в CRLF при checkout,
+# а скрипты внутри Linux-контейнеров с CRLF не запускаются
+# ("/bin/sh^M: bad interpreter"). Поэтому принудительно оставляем LF.
+* text=auto
+*.sh        text eol=lf
+*.py        text eol=lf
+*.tf        text eol=lf
+*.tfvars    text eol=lf
+*.hcl       text eol=lf
+*.tftest.hcl text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.tmpl      text eol=lf
+Makefile    text eol=lf
+Dockerfile* text eol=lf
+*.ps1       text eol=crlf
