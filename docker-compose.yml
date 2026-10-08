@@ -146,7 +146,7 @@ services:
   # успешно" с "упал". Запускается командой `make up` (или `make bootstrap`).
   bootstrap:
     profiles: ["init"]
-    image: python:3.13-alpine
+    image: python:3.13.16-alpine3.23
     working_dir: /scripts
     command: ["python", "bootstrap.py"]
     environment:
@@ -177,7 +177,7 @@ services:
   # `make ...` через `docker compose run --rm tools ...`, поэтому в профиле.
   tools:
     profiles: ["tools"]
-    image: python:3.13-alpine
+    image: python:3.13.16-alpine3.23
     working_dir: /scripts
     environment:
       GRAFANA_URL: http://grafana:3000
@@ -210,7 +210,6 @@ services:
       RUNNER_WORKDIR: /tmp/runner/work
       # Метка, по которой workflow'ы находят этот раннер (runs-on: [self-hosted, grafana-aac-stand])
       LABELS: ${RUNNER_LABELS:-grafana-aac-stand}
-      EPHEMERAL: "false"
     volumes:
       - runner-work:/tmp/runner/work
     depends_on:

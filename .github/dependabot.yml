@@ -1,0 +1,10 @@
+# Dependabot раз в неделю предлагает PR'ы на обновление версий GitHub Actions.
+# Он умеет обновлять и закреплённые по SHA экшены (меняет SHA и комментарий с версией).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
