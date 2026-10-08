@@ -139,7 +139,9 @@ def main():
     ]
     with open(path, "w", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
-    os.chmod(path, 0o600)
+    # 0644, а не 0600: файл создаёт root внутри контейнера, а читать его должен обычный
+    # пользователь на хосте (make/terraform). Каталог .secrets/ — только для локального стенда.
+    os.chmod(path, 0o644)
     log(f"✅ Записан {path} (на вашем компьютере: .secrets/terraform.env)")
 
 

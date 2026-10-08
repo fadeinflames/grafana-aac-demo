@@ -22,12 +22,6 @@ on:
 permissions:
   contents: read
 
-# Только один apply одновременно. Новые ставятся В ОЧЕРЕДЬ (а не отменяют текущий!):
-# прерванный посреди работы apply может оставить state в плохом состоянии.
-concurrency:
-  group: terraform-test-stand
-  cancel-in-progress: false
-
 env:
   GRAFANA_URL: ${{ vars.GRAFANA_URL }}
   AWS_ENDPOINT_URL_S3: ${{ vars.AWS_ENDPOINT_URL_S3 }}
@@ -42,6 +36,10 @@ env:
 jobs:
   plan:
     name: Plan (что будет применено)
+    # plan только читает Grafana: -lock=false, отдельная группа, apply не задерживает.
+    concurrency:
+      group: terraform-plan-main
+      cancel-in-progress: true
     runs-on: ${{ fromJSON(vars.STAND_RUNNER_LABELS || '["self-hosted","grafana-aac-stand"]') }}
     timeout-minutes: 15
     steps:
@@ -67,8 +65,11 @@ jobs:
       # Показываем план в «Summary» запуска — ревьюер перед Approve видит, что произойдёт.
       - name: terraform plan
         working-directory: terraform/envs/test
+        # bash с pipefail: если plan упадёт, шаг покраснеет, а не спрячется за `| tee`
+        shell: bash
         run: |
-          terraform plan -input=false -no-color | tee plan.txt
+          set -o pipefail
+          terraform plan -input=false -no-color -lock=false | tee plan.txt
           {
             echo '### Terraform plan'
             echo '```'
@@ -81,6 +82,14 @@ jobs:
     needs: plan
     runs-on: ${{ fromJSON(vars.STAND_RUNNER_LABELS || '["self-hosted","grafana-aac-stand"]') }}
     timeout-minutes: 20
+    # Только один apply одновременно (замок — на уровне job, чтобы он не держался,
+    # пока идёт plan). cancel-in-progress: false — текущий apply НЕ прерываем: оборванный
+    # посреди работы apply может оставить state в плохом состоянии. Если пока ждёт approval
+    # накопится несколько запусков, GitHub оставит только самый свежий — а он применяет
+    # актуальный main целиком, так что ничего не теряется.
+    concurrency:
+      group: terraform-test-stand
+      cancel-in-progress: false
     # Environment с обязательным ревьюером = «ручной approve».
     environment: test-stand
     steps:

@@ -7,8 +7,6 @@
 SHELL := /bin/sh
 
 TF_DIR  := terraform/envs/test
-# На Windows (Git Bash) обычно "python", на Linux/macOS "python3"
-PY      := $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
 TOOLS   := docker compose run --rm -T tools python
 # AUTO=1 make apply  — применить без вопроса "yes" (используйте осознанно)
 APPLY_FLAGS := $(if $(AUTO),-auto-approve,)
@@ -29,7 +27,7 @@ up: ## Поднять стенд (Grafana, Prometheus, MinIO ...) и выдат�
 	@test -f .env || cp .env.example .env
 	@mkdir -p .secrets
 	docker compose up -d --wait
-	docker compose run --rm bootstrap
+	docker compose run --rm -T bootstrap
 	@docker compose run --rm -T tools python set_test_metric.py 0
 	@echo ""
 	@echo "Стенд готов:"
@@ -40,7 +38,7 @@ up: ## Поднять стенд (Grafana, Prometheus, MinIO ...) и выдат�
 	@echo "Дальше:  make init && make apply"
 
 bootstrap: ## Перевыпустить токен для Terraform и перепроверить бакет MinIO (старый токен перестанет работать)
-	docker compose run --rm bootstrap
+	docker compose run --rm -T bootstrap
 
 down: ## Остановить стенд (данные сохраняются)
 	docker compose down
@@ -62,16 +60,16 @@ init: ## terraform init (скачать провайдер, подключить
 fmt: ## Автоформатирование всех .tf-файлов
 	terraform fmt -recursive terraform
 
-validate: ## Все проверки без доступа к Grafana: fmt, validate, дашборды, юнит-тесты модулей
+validate: ## Все проверки без доступа к Grafana: fmt, validate, дашборды (в контейнере), юнит-тесты модулей
 	terraform fmt -check -recursive -diff terraform
-	TF_DATA_DIR=$(CURDIR)/.tf-validate terraform -chdir=$(TF_DIR) init -backend=false -input=false
-	TF_DATA_DIR=$(CURDIR)/.tf-validate terraform -chdir=$(TF_DIR) validate
-	$(PY) scripts/validate_dashboards.py
+	TF_DATA_DIR="$(CURDIR)/.tf-validate" terraform -chdir=$(TF_DIR) init -backend=false -input=false
+	TF_DATA_DIR="$(CURDIR)/.tf-validate" terraform -chdir=$(TF_DIR) validate
+	docker compose run --rm -T tools python validate_dashboards.py
 	$(MAKE) test-unit
 
 test-unit: ## Юнит-тесты модуля alert-rules (проверка YAML-алертов, Grafana не нужна)
-	TF_DATA_DIR=$(CURDIR)/.tf-validate-alert-rules terraform -chdir=terraform/modules/alert-rules init -backend=false -input=false
-	TF_DATA_DIR=$(CURDIR)/.tf-validate-alert-rules terraform -chdir=terraform/modules/alert-rules test
+	TF_DATA_DIR="$(CURDIR)/.tf-validate-alert-rules" terraform -chdir=terraform/modules/alert-rules init -backend=false -input=false
+	TF_DATA_DIR="$(CURDIR)/.tf-validate-alert-rules" terraform -chdir=terraform/modules/alert-rules test
 
 plan: ## terraform plan — показать, что изменится в Grafana (ничего не меняет)
 	terraform -chdir=$(TF_DIR) plan -input=false
@@ -95,7 +93,7 @@ alert-fire-critical: ## То же, но ещё и critical-алерт (пров�
 alert-resolve: ## Снять тестовый алерт и дождаться уведомления "resolved"
 	$(TOOLS) alert_e2e.py resolve
 
-e2e: ## Полный цикл: fire -> уведомления -> resolve (~2-3 минуты)
+e2e: ## Полный цикл: fire -> уведомления -> resolve (~1,5 минуты)
 	$(TOOLS) alert_e2e.py cycle
 
 test: validate smoke e2e ## Всё сразу: проверки кода, smoke, e2e

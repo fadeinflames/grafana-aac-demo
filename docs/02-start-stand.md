@@ -69,7 +69,6 @@ make ps
 Ожидаемый вывод:
 ```
 SERVICE         STATUS
-bootstrap       Exited (0) 12 minutes ago
 grafana         Up 11 minutes (healthy)
 minio           Up 11 minutes (healthy)
 node-exporter   Up 11 minutes (healthy)
@@ -77,7 +76,7 @@ prometheus      Up 11 minutes (healthy)
 pushgateway     Up 11 minutes (healthy)
 webhook         Up 11 minutes (healthy)
 ```
-`bootstrap` в статусе `Exited (0)` — это **нормально**: он выполнил работу и завершился успешно. У остальных должно быть `(healthy)`.
+У всех шести сервисов должно быть `(healthy)`. Контейнера `bootstrap` в списке нет — это нормально: он одноразовый, запускается через `docker compose run --rm` и удаляется после успешного завершения.
 
 ## Шаг 4. Открыть сервисы в браузере
 

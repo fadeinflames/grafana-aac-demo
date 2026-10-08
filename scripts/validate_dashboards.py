@@ -7,15 +7,17 @@
   * остался блок "__inputs" (экспорт "для внешнего использования") или переменные ${DS_...};
   * датасорс указан ИМЕНЕМ (строкой) или чужим uid — а должен быть uid из Terraform.
 
-Работает на любом Python 3.8+ без установки пакетов:
-    python3 scripts/validate_dashboards.py
+Работает на любом Python 3.8+ без установки пакетов. Запуск:
+    make validate                                   (внутри контейнера, Python на хосте не нужен)
+    python3 scripts/validate_dashboards.py          (если Python есть — напрямую; в CI так)
 """
 import glob
 import json
 import os
 import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+# REPO_ROOT задаётся в контейнере `tools` (там репозиторий смонтирован в /repo)
+ROOT = os.environ.get("REPO_ROOT") or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # uid датасорсов, на которые можно ссылаться (см. terraform/modules/datasource-prometheus)
 ALLOWED_DS_UIDS = {"prometheus-main", "grafana", "-- Grafana --", "-- Mixed --", "-- Dashboard --"}
 # встроенные "датасорсы" Grafana (есть в любом дашборде, экспортированном из UI: аннотация "Annotations & Alerts")

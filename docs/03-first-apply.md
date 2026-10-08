@@ -19,6 +19,8 @@ terraform -chdir=terraform/envs/test init
 . .\scripts\load-env.ps1
 terraform -chdir=terraform/envs/test init
 ```
+Если PowerShell отвечает «running scripts is disabled», разрешите скрипты **только для этого окна**: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`, и повторите.
+
 Скрипт `load-env.ps1` читает `.secrets/terraform.env` и кладёт адреса и токены в переменные окружения текущего окна PowerShell. Делать это нужно в каждом новом окне.
 
 `init` делает три вещи: скачивает провайдер `grafana/grafana` нужной версии (и проверяет его по `.terraform.lock.hcl`), подключает модули и подключается к хранилищу state в MinIO.

@@ -67,6 +67,8 @@
 | 37 | `plan` в CI: `Error: Failed to get existing workspaces` / `AccessDenied` / `InvalidAccessKeyId` | Неверные/устаревшие `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` в Secrets | Обновите секреты из `.secrets/terraform.env` | — |
 | 38 | Комментарий с планом не появился в PR | PR из форка (job `plan` не запускается намеренно) или у job нет `pull-requests: write` | Работайте из веток этого репозитория; права заданы в workflow | — |
 | 39 | `Drift detection` красный, хотя «никто ничего не менял» | Возможно, обновился провайдер/Grafana и объект «нормализуется» по-другому либо стенд перезапускали | Откройте Summary запуска: что именно в плане. Если это шум — исправьте код; если реальная правка — см. [07](07-drift-and-rules.md) | — |
+| 40 | PR от Dependabot: нет проверки `terraform plan` / «Expected — Waiting» | Job `plan` для Dependabot и форков намеренно пропускается (у них нет секретов) | Так и задумано; проверки `Static checks` отрабатывают. Для обновлений Actions запустите plan вручную после merge (workflow Drift) | — |
+| 41 | `. .\scripts\load-env.ps1` → `running scripts is disabled` (PowerShell) | Политика выполнения скриптов Windows | В этом окне: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` | — |
 
 ## Когда ничего не помогло
 

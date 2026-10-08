@@ -95,7 +95,7 @@ flowchart LR
 
 * `docker compose up` → все сервисы `healthy`; `make up` — 3 запуска подряд с нуля без ошибок.
 * `terraform init / validate / plan / apply` из `envs/test` → создан 21 ресурс; повторный `plan` → **No changes** (идемпотентность).
-* Через API Grafana: датасорс (health = OK), 3 папки, 2 дашборда, 5 правил, 2 contact point, notification policy с маршрутом по severity, mute timing, шаблон; у всех, кроме дашбордов и датасорса, `provenance = api`. Это же автоматически проверяет `make smoke` (24 проверки).
+* Через API Grafana: датасорс (health = OK), 3 папки, 2 дашборда, 5 правил, 2 contact point, notification policy с маршрутом по severity, mute timing, шаблон; у правил, contact point'ов и notification policy `provenance = api` (`make smoke` проверяет именно их, 24 проверки); у mute timing и шаблона `provenance: api` проверен вручную через API, у дашбордов, папок и датасорса provenance нет.
 * `make alert-fire` → алерт `Normal → Pending → Firing` → вебхук получен (33 с), текст собран из нашего шаблона; `make alert-resolve` → `Normal` и вебхук `resolved` (27 с). `make e2e` — полный цикл, включая **маршрутизацию**: critical-алерт приходит в отдельный «ящик», warning — в обычный.
 * Изменение порога в YAML → `plan` показал ровно это изменение (`85 -> 80`) → `apply` → в Grafana значение 80.
 * Drift: правка дашборда, URL датасорса и `for` правила «руками» → `plan -detailed-exitcode` вернул код 2 и показал все три расхождения → `apply` вернул как в Git.

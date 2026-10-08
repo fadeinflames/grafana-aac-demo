@@ -6,7 +6,7 @@
 Как их загрузить без make:
 
 * Git Bash / Linux / macOS: `set -a; . .secrets/terraform.env; set +a`
-* PowerShell: `. .\scripts\load-env.ps1`
+* PowerShell: `. .\scripts\load-env.ps1` (если «running scripts is disabled» — один раз в этом окне: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`)
 
 | Что сделать | С make | Без make |
 |---|---|---|
@@ -18,7 +18,7 @@
 | Перевыпустить токен | `make bootstrap` | `docker compose run --rm bootstrap` |
 | terraform init | `make init` | *(окружение)* `terraform -chdir=terraform/envs/test init` |
 | Форматирование `.tf` | `make fmt` | `terraform fmt -recursive terraform` |
-| Проверки без Grafana | `make validate` | `terraform fmt -check -recursive terraform`; `terraform -chdir=terraform/envs/test init -backend=false`; `terraform -chdir=terraform/envs/test validate`; `python scripts/validate_dashboards.py`; `terraform -chdir=terraform/modules/alert-rules init -backend=false` и `… test` |
+| Проверки без Grafana | `make validate` | 1) `terraform fmt -check -recursive terraform`. 2) **С отдельным `TF_DATA_DIR`** (иначе `init -backend=false` сломает ваш backend!): Git Bash — `export TF_DATA_DIR=$PWD/.tf-validate`, PowerShell — `$env:TF_DATA_DIR="$PWD\.tf-validate"`; затем `terraform -chdir=terraform/envs/test init -backend=false` и `… validate`; затем `unset TF_DATA_DIR` / `Remove-Item Env:TF_DATA_DIR`. 3) `docker compose run --rm tools python validate_dashboards.py`. 4) юнит-тесты — строкой ниже |
 | Юнит-тесты алертов | `make test-unit` | `terraform -chdir=terraform/modules/alert-rules init -backend=false` затем `terraform -chdir=terraform/modules/alert-rules test` |
 | План изменений | `make plan` | *(окружение)* `terraform -chdir=terraform/envs/test plan` |
 | Применить | `make apply` (`AUTO=1 make apply` — без вопроса) | *(окружение)* `terraform -chdir=terraform/envs/test apply` |
@@ -26,7 +26,7 @@
 | Вызвать алерт | `make alert-fire` | `docker compose run --rm tools python alert_e2e.py fire` |
 | …и critical | `make alert-fire-critical` | `docker compose run --rm tools python alert_e2e.py fire-critical` |
 | Снять алерт | `make alert-resolve` | `docker compose run --rm tools python alert_e2e.py resolve` |
-| Полный e2e (~1,5 мин) | `make e2e` | `docker compose run --rm tools python alert_e2e.py cycle` |
+| Полный e2e (~1,5 минуты) | `make e2e` | `docker compose run --rm tools python alert_e2e.py cycle` |
 | Всё сразу | `make test` | три предыдущих блока подряд |
 | Задать метрику вручную | — | `docker compose run --rm tools python set_test_metric.py 100` |
 | Учебная «порча» | `make drift-dashboard` / `drift-datasource` / `drift-rule` / `drift-rule-ui` | `docker compose run --rm tools python drift.py dashboard` (и т.д.) |

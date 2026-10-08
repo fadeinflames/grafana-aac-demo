@@ -40,7 +40,7 @@ make up                  # стенд: Grafana, Prometheus, MinIO, приёмн�
 make init                # terraform init (подключает state в MinIO)
 make plan                # посмотреть, что будет создано
 make apply               # создать всё в Grafana (спросит yes)
-make test                # проверки кода + smoke + сквозной тест алерта (~2 мин)
+make test                # проверки кода + smoke + сквозной тест алерта (~2,5 мин)
 make alert-fire          # вызвать тестовый алерт руками и увидеть уведомление
 make alert-resolve       # снять алерт
 ```

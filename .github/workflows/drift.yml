@@ -13,8 +13,9 @@ on:
 permissions:
   contents: read
 
+# drift только читает Grafana (-lock=false), поэтому у него своя группа и он не ждёт apply.
 concurrency:
-  group: terraform-test-stand
+  group: terraform-drift
   cancel-in-progress: false
 
 jobs:
@@ -60,7 +61,7 @@ jobs:
         working-directory: terraform/envs/test
         run: |
           set +e
-          terraform plan -input=false -no-color -detailed-exitcode > plan.txt 2>&1
+          terraform plan -input=false -no-color -lock=false -detailed-exitcode > plan.txt 2>&1
           code=$?
           set -e
           cat plan.txt

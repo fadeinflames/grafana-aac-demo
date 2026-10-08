@@ -13,12 +13,8 @@ name: PR checks
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "alerts/**"
-      - "dashboards/**"
-      - "terraform/**"
-      - "scripts/**"
-      - ".github/workflows/**"
+    # Фильтра `paths:` здесь НЕТ намеренно: если проверки обязательны (branch protection),
+    # а workflow из-за фильтра не запустился, PR навсегда останется в "Expected — Waiting".
 
 # Права токена GITHUB_TOKEN по умолчанию — только чтение кода.
 # Что-то большее (комментарии в PR) выдаём отдельным job'ам ниже.
@@ -104,15 +100,18 @@ jobs:
     needs: static-checks
     # PR из форка НЕ должен запускаться на нашем раннере: чужой код получил бы
     # доступ к стенду и секретам.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # PR от Dependabot тоже пропускаем: ему не выдаются Actions-секреты и права на запись.
+    # Пропущенный job считается успешным, merge не блокируется.
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     # По умолчанию — наш self-hosted раннер. Если стенд доступен иначе (туннель, Grafana Cloud),
     # задайте переменную репозитория STAND_RUNNER_LABELS = ["ubuntu-24.04"].
     runs-on: ${{ fromJSON(vars.STAND_RUNNER_LABELS || '["self-hosted","grafana-aac-stand"]') }}
     timeout-minutes: 15
-    # Один общий «замок» на всё, что трогает стенд: plan, apply и drift идут по очереди.
+    # plan только ЧИТАЕТ Grafana, поэтому идёт с -lock=false и не мешает apply.
+    # Новый коммит в тот же PR отменяет предыдущий plan этого PR.
     concurrency:
-      group: terraform-test-stand
-      cancel-in-progress: false
+      group: terraform-plan-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write # нужно только чтобы написать комментарий с планом
@@ -154,7 +153,7 @@ jobs:
         working-directory: terraform/envs/test
         run: |
           set +e
-          terraform plan -input=false -no-color -detailed-exitcode > plan.txt 2>&1
+          terraform plan -input=false -no-color -lock=false -detailed-exitcode > plan.txt 2>&1
           code=$?
           set -e
           cat plan.txt
@@ -162,7 +161,9 @@ jobs:
           echo "exitcode=$code" >> "$GITHUB_OUTPUT"
 
       # Публикуем план комментарием в PR (один комментарий, обновляется при новых коммитах).
+      # always(): комментарий нужен и тогда, когда plan упал с ошибкой — там самое интересное.
       - name: Comment plan in PR
+        if: always() && steps.plan.outcome != 'skipped'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PLAN_EXITCODE: ${{ steps.plan.outputs.exitcode }}
@@ -173,10 +174,13 @@ jobs:
             let plan = fs.readFileSync('terraform/envs/test/plan.txt', 'utf8');
             // Комментарий в GitHub ограничен 65 536 символами — оставляем запас.
             if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (план обрезан, полный текст — в логе job\'а)';
-            const status = process.env.PLAN_EXITCODE === '2'
-              ? 'Есть изменения (см. ниже). Они применятся автоматически после merge в `main`.'
-              : 'Изменений нет: Grafana уже соответствует коду.';
-            const body = `${marker}\n### Terraform plan (тестовый стенд)\n${status}\n\n<details><summary>Показать план</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>\n\nКоммит: ${context.sha.slice(0, 7)}`;
+            const code = process.env.PLAN_EXITCODE;
+            const status = code === '2'
+              ? 'Есть изменения (см. ниже). Они применятся после merge в `main` и ручного подтверждения.'
+              : code === '0'
+                ? 'Изменений нет: Grafana уже соответствует коду.'
+                : ':x: **terraform plan завершился с ошибкой** — текст ошибки ниже.';
+            const body = `${marker}\n### Terraform plan (тестовый стенд)\n${status}\n\n<details><summary>Показать план</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>\n\nКоммит: ${context.payload.pull_request.head.sha.slice(0, 7)}`;
             const { data: comments } = await github.rest.issues.listComments({
               ...context.repo, issue_number: context.issue.number, per_page: 100,
             });
