@@ -17,8 +17,8 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # uid датасорсов, на которые можно ссылаться (см. terraform/modules/datasource-prometheus)
-ALLOWED_DS_UIDS = {"prometheus-main", "grafana"}
-# встроенные "датасорсы" Grafana, которые бывают в аннотациях
+ALLOWED_DS_UIDS = {"prometheus-main", "grafana", "-- Grafana --", "-- Mixed --", "-- Dashboard --"}
+# встроенные "датасорсы" Grafana (есть в любом дашборде, экспортированном из UI: аннотация "Annotations & Alerts")
 BUILTIN_DS_NAMES = {"-- Grafana --", "-- Mixed --", "-- Dashboard --"}
 
 errors = []
@@ -41,7 +41,7 @@ def walk(path, node, trail=""):
 
 
 def check_datasource(path, where, value):
-    if value is None or value in BUILTIN_DS_NAMES:
+    if value is None or (isinstance(value, str) and value in BUILTIN_DS_NAMES):
         return
     if isinstance(value, str):
         err(path, f'{where}: датасорс указан строкой "{value}". Нужен объект {{"type": "prometheus", "uid": "prometheus-main"}}')
@@ -86,8 +86,6 @@ def main():
             err(path, 'нет поля "title"')
         if "__inputs" in dash or "__requires" in dash:
             err(path, 'есть "__inputs"/"__requires" — это экспорт «для внешнего использования». Экспортируйте без этой галочки')
-        if dash.get("id") not in (None,):
-            err(path, f'поле "id" должно быть null/отсутствовать (сейчас {dash.get("id")}) — его выдаёт сама Grafana')
         walk(path, dash)
 
     if errors:

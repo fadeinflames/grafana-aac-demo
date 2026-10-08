@@ -2,8 +2,8 @@ output "datasource_uid" {
   value = module.prometheus.uid
 }
 
-output "dashboard_urls" {
-  value = module.dashboards.dashboard_urls
+output "dashboard_uids" {
+  value = module.dashboards.dashboard_uids
 }
 
 output "alert_rule_groups" {

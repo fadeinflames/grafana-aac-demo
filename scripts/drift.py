@@ -2,7 +2,7 @@
 
     python drift.py dashboard    # переименовать дашборд "через UI" (на самом деле через API)
     python drift.py datasource   # поменять URL датасорса
-    python drift.py rule         # поменять `for` у правила в обход блокировки (через provisioning API)
+    python drift.py rule         # поменять `for` у правила через provisioning API (как это сделал бы скрипт)
     python drift.py rule-ui      # попытаться отредактировать правило так, как это делает UI (должно НЕ получиться)
 
 После любой из первых трёх команд `make plan` покажет расхождение, а `make apply` вернёт всё как в Git.
@@ -36,10 +36,11 @@ def _rule(title):
 def rule():
     r = _rule("HostHighCpuUsage")
     r["for"] = "42m"
-    # Заголовок X-Disable-Provenance снимает защиту с правила — так делает кто-то
-    # со скриптом и токеном, но НЕ обычный пользователь в UI.
-    status, data = grafana("PUT", f"/api/v1/provisioning/alert-rules/{r['uid']}", r,
-                           headers={"X-Disable-Provenance": "true"})
+    # Provisioning API — тот самый, которым пользуется и Terraform. Правило с
+    # provenance=api через него править МОЖНО (а через UI — нельзя, см. rule-ui).
+    # Т.е. от человека с токеном/админским паролем provenance не защищает —
+    # он защищает от случайных правок в интерфейсе. Такие правки ловит drift detection.
+    status, data = grafana("PUT", f"/api/v1/provisioning/alert-rules/{r['uid']}", r)
     print("правило:", status, "for изменён на 42m" if status == 200 else data)
 
 

@@ -1,0 +1,17 @@
+# Настройки yamllint для alerts/*.yaml. Запуск: yamllint --strict --config-file .yamllint.yml alerts
+extends: default
+
+rules:
+  # PromQL-запросы бывают длинными — длину строки не ограничиваем
+  line-length: disable
+  # Допускаем комментарии вплотную к значению:  threshold: 85   # порог
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  document-start: disable
+  # Выравнивание значений пробелами для читаемости — не ошибка
+  braces:
+    max-spaces-inside: 1
+  # Допускаем несколько пробелов после двоеточия при выравнивании комментариев
+  colons:
+    max-spaces-after: -1

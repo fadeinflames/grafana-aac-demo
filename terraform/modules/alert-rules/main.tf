@@ -53,6 +53,9 @@ locals {
   valid_exec_err   = ["OK", "Error", "Alerting", "KeepLast"]
   duration_regex   = "^[0-9]+(s|m|h|d)$"
 
+  # Сколько секунд в единице времени (для перевода "1m" -> 60)
+  unit_seconds = { s = 1, m = 60, h = 3600, d = 86400 }
+
   # Преобразование понятных слов в типы Grafana
   operator_to_grafana = { gt = "gt", lt = "lt" }
 }
@@ -131,7 +134,7 @@ resource "grafana_rule_group" "this" {
 
   name             = each.value.name
   folder_uid       = grafana_folder.alerts[each.value.folder].uid
-  interval_seconds = tonumber(regex("^[0-9]+", each.value.interval)) * lookup({ s = 1, m = 60, h = 3600, d = 86400 }, regex("[smhd]$", each.value.interval))
+  interval_seconds = tonumber(regex("^[0-9]+", each.value.interval)) * local.unit_seconds[regex("[smhd]$", each.value.interval)]
 
   # disable_provenance = false  =>  правила нельзя править в UI (см. docs/07-drift-and-rules.md)
   disable_provenance = var.disable_provenance

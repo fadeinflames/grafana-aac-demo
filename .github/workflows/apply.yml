@@ -1,0 +1,116 @@
+# ============================================================================
+#  Применение изменений после merge в main.
+#
+#   push в main ──> plan (показываем, что будет) ──> [ручное подтверждение] ──> apply ──> smoke-тест
+#
+#  «Ручное подтверждение» настраивается в GitHub: Settings -> Environments ->
+#  test-stand -> Required reviewers (см. docs/06-ci-setup.md). Пока ревьюер не
+#  нажмёт Approve, job `apply` не стартует.
+# ============================================================================
+name: Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "alerts/**"
+      - "dashboards/**"
+      - "terraform/**"
+  # Кнопка «Run workflow» — применить вручную (например, после сброса стенда)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Только один apply одновременно. Новые ставятся В ОЧЕРЕДЬ (а не отменяют текущий!):
+# прерванный посреди работы apply может оставить state в плохом состоянии.
+concurrency:
+  group: terraform-test-stand
+  cancel-in-progress: false
+
+env:
+  GRAFANA_URL: ${{ vars.GRAFANA_URL }}
+  AWS_ENDPOINT_URL_S3: ${{ vars.AWS_ENDPOINT_URL_S3 }}
+  GRAFANA_AUTH: ${{ secrets.GRAFANA_AUTH }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: us-east-1
+  TF_IN_AUTOMATION: "1"
+  TF_INPUT: "0"
+  CHECKPOINT_DISABLE: "1"
+
+jobs:
+  plan:
+    name: Plan (что будет применено)
+    runs-on: ${{ fromJSON(vars.STAND_RUNNER_LABELS || '["self-hosted","grafana-aac-stand"]') }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read Terraform version
+        id: tfv
+        run: echo "version=$(cat terraform/envs/test/.terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ steps.tfv.outputs.version }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        working-directory: terraform/envs/test
+        run: terraform init
+
+      # Показываем план в «Summary» запуска — ревьюер перед Approve видит, что произойдёт.
+      - name: terraform plan
+        working-directory: terraform/envs/test
+        run: |
+          terraform plan -input=false -no-color | tee plan.txt
+          {
+            echo '### Terraform plan'
+            echo '```'
+            tail -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  apply:
+    name: Apply + smoke test
+    needs: plan
+    runs-on: ${{ fromJSON(vars.STAND_RUNNER_LABELS || '["self-hosted","grafana-aac-stand"]') }}
+    timeout-minutes: 20
+    # Environment с обязательным ревьюером = «ручной approve».
+    environment: test-stand
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read Terraform version
+        id: tfv
+        run: echo "version=$(cat terraform/envs/test/.terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ steps.tfv.outputs.version }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        working-directory: terraform/envs/test
+        run: terraform init
+
+      # Применяем. План мог слегка измениться с момента job'а выше (если кто-то
+      # менял стенд), но Terraform всё равно приведёт Grafana к состоянию из Git.
+      # В бою вместо этого используйте сохранённый план (`plan -out` + `apply tfplan`).
+      - name: terraform apply
+        working-directory: terraform/envs/test
+        run: terraform apply -input=false -auto-approve
+
+      # Smoke-тест: проверяем в Grafana, что ресурсы из Git реально появились.
+      # Если чего-то нет — job красный, даже если apply «прошёл».
+      - name: Smoke test
+        run: python3 scripts/smoke.py

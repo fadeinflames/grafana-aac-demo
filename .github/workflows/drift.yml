@@ -1,0 +1,78 @@
+# ============================================================================
+#  Обнаружение drift: раз в 6 часов сравниваем Grafana с кодом в main.
+#  Если кто-то что-то поменял руками (или «сломалось» иначе) — job красный
+#  и GitHub пришлёт уведомление. Подробнее: docs/07-drift-and-rules.md
+# ============================================================================
+name: Drift detection
+
+on:
+  schedule:
+    - cron: "17 */6 * * *" # каждые 6 часов в :17 (не в :00, чтобы не попадать в пик нагрузки GitHub)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-test-stand
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: terraform plan -detailed-exitcode
+    runs-on: ${{ fromJSON(vars.STAND_RUNNER_LABELS || '["self-hosted","grafana-aac-stand"]') }}
+    timeout-minutes: 15
+    env:
+      GRAFANA_URL: ${{ vars.GRAFANA_URL }}
+      AWS_ENDPOINT_URL_S3: ${{ vars.AWS_ENDPOINT_URL_S3 }}
+      GRAFANA_AUTH: ${{ secrets.GRAFANA_AUTH }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: us-east-1
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      CHECKPOINT_DISABLE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read Terraform version
+        id: tfv
+        run: echo "version=$(cat terraform/envs/test/.terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ steps.tfv.outputs.version }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        working-directory: terraform/envs/test
+        run: terraform init
+
+      # Коды возврата plan -detailed-exitcode:
+      #   0 — Grafana совпадает с кодом (всё хорошо)
+      #   1 — ошибка (нет доступа, битый конфиг ...)
+      #   2 — РАСХОЖДЕНИЕ: Grafana отличается от кода = drift
+      - name: Detect drift
+        working-directory: terraform/envs/test
+        run: |
+          set +e
+          terraform plan -input=false -no-color -detailed-exitcode > plan.txt 2>&1
+          code=$?
+          set -e
+          cat plan.txt
+          if [ "$code" -eq 2 ]; then
+            {
+              echo '### :warning: Обнаружен drift'
+              echo 'Grafana отличается от кода в `main`. Либо откатите ручную правку (`terraform apply`), либо внесите её в Git через PR.'
+              echo '```'
+              tail -c 60000 plan.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Drift detected: Grafana differs from the code in main"
+            exit 1
+          fi
+          exit "$code"

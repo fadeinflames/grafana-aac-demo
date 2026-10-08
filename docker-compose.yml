@@ -195,16 +195,19 @@ services:
   # См. docs/06-ci-setup.md. Запуск: docker compose --profile ci up -d --build
   github-runner:
     profiles: ["ci"]
-    build:
-      context: ./stand/runner
+    # В образе уже есть git, curl, python3 (он нужен scripts/smoke.py). Terraform
+    # на раннер ставит сам workflow (hashicorp/setup-terraform).
+    # Тег зафиксирован; GitHub со временем перестаёт принимать СЛИШКОМ старые раннеры —
+    # поднимайте тег раз в несколько месяцев (список: hub.docker.com/r/myoung34/github-runner/tags).
+    image: myoung34/github-runner:2.337.0-ubuntu-noble
     environment:
       REPO_URL: ${RUNNER_REPO_URL:-}
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       RUNNER_NAME: ${RUNNER_NAME:-grafana-aac-stand-runner}
       RUNNER_WORKDIR: /tmp/runner/work
+      # Метка, по которой workflow'ы находят этот раннер (runs-on: [self-hosted, grafana-aac-stand])
       LABELS: ${RUNNER_LABELS:-grafana-aac-stand}
       EPHEMERAL: "false"
-      DISABLE_AUTO_UPDATE: "true"
     volumes:
       - runner-work:/tmp/runner/work
     depends_on:
