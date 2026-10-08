@@ -1,6 +1,6 @@
 # ============================================================================
 #  Учебный стенд "Grafana as Code".
-#  Запуск:  docker compose up -d --wait      (или:  make up)
+#  Запуск:  make up        (= docker compose up -d --wait  +  docker compose run --rm bootstrap)
 #  Всё настраивается через файл .env (см. .env.example).
 #
 #  ВАЖНО: версии образов зафиксированы (никаких `latest`) — чтобы у всех
@@ -142,7 +142,10 @@ services:
   # Одноразовый сервис: создаёт бакет в MinIO и service account + токен в Grafana,
   # а токен кладёт в ./.secrets/terraform.env (файл в .gitignore).
   # Безопасно запускать повторно: при каждом запуске выдаётся новый токен.
+  # Вынесен в профиль `init`, чтобы `docker compose up --wait` не путал "завершился
+  # успешно" с "упал". Запускается командой `make up` (или `make bootstrap`).
   bootstrap:
+    profiles: ["init"]
     image: python:3.13-alpine
     working_dir: /scripts
     command: ["python", "bootstrap.py"]

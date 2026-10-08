@@ -19,7 +19,7 @@ APPLY_FLAGS := $(if $(AUTO),-auto-approve,)
 export
 
 .DEFAULT_GOAL := help
-.PHONY: help up down reset ps logs init fmt validate test-unit plan apply smoke alert-fire alert-fire-critical alert-resolve test e2e drift-dashboard drift-datasource drift-rule drift-rule-ui lock
+.PHONY: help up bootstrap down reset ps logs init fmt validate test-unit plan apply smoke alert-fire alert-fire-critical alert-resolve test e2e drift-dashboard drift-datasource drift-rule drift-rule-ui lock
 
 help: ## Показать эту справку
 	@grep -E '^[a-zA-Z_-]+:.*?## ' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -29,6 +29,7 @@ up: ## Поднять стенд (Grafana, Prometheus, MinIO ...) и выдат�
 	@test -f .env || cp .env.example .env
 	@mkdir -p .secrets
 	docker compose up -d --wait
+	docker compose run --rm bootstrap
 	@docker compose run --rm -T tools python set_test_metric.py 0
 	@echo ""
 	@echo "Стенд готов:"
@@ -37,6 +38,9 @@ up: ## Поднять стенд (Grafana, Prometheus, MinIO ...) и выдат�
 	@echo "  Webhook-ящики  http://localhost:8081/s/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	@echo "  MinIO console  http://localhost:9001   (minioadmin / minioadmin123)"
 	@echo "Дальше:  make init && make apply"
+
+bootstrap: ## Перевыпустить токен для Terraform и перепроверить бакет MinIO (старый токен перестанет работать)
+	docker compose run --rm bootstrap
 
 down: ## Остановить стенд (данные сохраняются)
 	docker compose down
@@ -60,14 +64,14 @@ fmt: ## Автоформатирование всех .tf-файлов
 
 validate: ## Все проверки без доступа к Grafana: fmt, validate, дашборды, юнит-тесты модулей
 	terraform fmt -check -recursive -diff terraform
-	terraform -chdir=$(TF_DIR) init -backend=false -input=false
-	terraform -chdir=$(TF_DIR) validate
+	TF_DATA_DIR=$(CURDIR)/.tf-validate terraform -chdir=$(TF_DIR) init -backend=false -input=false
+	TF_DATA_DIR=$(CURDIR)/.tf-validate terraform -chdir=$(TF_DIR) validate
 	$(PY) scripts/validate_dashboards.py
 	$(MAKE) test-unit
 
 test-unit: ## Юнит-тесты модуля alert-rules (проверка YAML-алертов, Grafana не нужна)
-	terraform -chdir=terraform/modules/alert-rules init -backend=false -input=false
-	terraform -chdir=terraform/modules/alert-rules test
+	TF_DATA_DIR=$(CURDIR)/.tf-validate-alert-rules terraform -chdir=terraform/modules/alert-rules init -backend=false -input=false
+	TF_DATA_DIR=$(CURDIR)/.tf-validate-alert-rules terraform -chdir=terraform/modules/alert-rules test
 
 plan: ## terraform plan — показать, что изменится в Grafana (ничего не меняет)
 	terraform -chdir=$(TF_DIR) plan -input=false

@@ -29,3 +29,4 @@ Thumbs.db
 
 # Локальные lock-файлы модулей (lock коммитится только в terraform/envs/*)
 terraform/modules/**/.terraform.lock.hcl
+.tf-validate*/
