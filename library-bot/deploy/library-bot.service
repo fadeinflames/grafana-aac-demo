@@ -1,0 +1,20 @@
+[Unit]
+Description=Telegram bot for MyHomeLib collection
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=librarybot
+WorkingDirectory=/opt/library-bot
+EnvironmentFile=/opt/library-bot/.env
+ExecStart=/opt/library-bot/venv/bin/python -m bot.main
+Restart=always
+RestartSec=5
+# библиотека только на чтение
+ProtectSystem=strict
+ReadWritePaths=/var/lib/library-bot
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
