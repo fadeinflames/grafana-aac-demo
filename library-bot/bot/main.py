@@ -10,6 +10,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButto
                            InlineKeyboardMarkup, Message)
 
 from . import convert
+from .ai_search import AiPlanner
 from .config import Config
 from .indexer import build_index, find_inpx, is_stale
 from .library import Book, Library
@@ -27,10 +28,10 @@ def short(b: Book) -> str:
     return f"{a} — {b.title}"[:60]
 
 
-def build_router(cfg: Config, lib: Library) -> Router:
+def build_router(cfg: Config, lib: Library, planner: AiPlanner | None = None) -> Router:
     r = Router()
-    # последний запрос пользователя для пагинации (callback_data ограничен 64 байтами)
-    last_query: dict[int, str] = {}
+    # выбранное FTS-выражение и язык для пагинации (callback_data ограничен 64 байтами)
+    last_query: dict[int, tuple[str | None, str]] = {}
     langs: dict[int, str] = {}
     can_convert = convert.available(cfg.ebook_convert)
 
@@ -64,8 +65,8 @@ def build_router(cfg: Config, lib: Library) -> Router:
         return langs.get(uid, cfg.default_lang)
 
     def render(uid: int, page: int):
-        q = last_query[uid]
-        books, total = lib.search(q, user_lang(uid), PAGE, page * PAGE)
+        match, lang = last_query[uid]
+        books, total = lib.search_match(match, lang, PAGE, page * PAGE) if match else ([], 0)
         if not books:
             return "Ничего не найдено.", None
         rows = [[InlineKeyboardButton(text=short(b), callback_data=f"b:{b.id}")] for b in books]
@@ -83,9 +84,14 @@ def build_router(cfg: Config, lib: Library) -> Router:
     async def on_text(m: Message):
         if not allowed(m.from_user.id):
             return await m.answer("Нет доступа. Ваш id: /id")
-        last_query[m.from_user.id] = m.text
-        text, kb = await asyncio.to_thread(render, m.from_user.id, 0)
-        await m.answer(text, reply_markup=kb)
+        uid = m.from_user.id
+        status = await m.answer("🔎 Ищу…")
+        plan, fail = await planner.plan(m.text) if planner else (None, None)
+        last_query[uid] = await asyncio.to_thread(lib.resolve, m.text, plan, user_lang(uid))
+        text, kb = await asyncio.to_thread(render, uid, 0)
+        if fail:
+            text += f"\n(ИИ недоступен: {fail} — искал по тексту как есть)"
+        await status.edit_text(text, reply_markup=kb)
 
     @r.callback_query(F.data.startswith("p:"))
     async def on_page(c: CallbackQuery):
@@ -125,13 +131,16 @@ def build_router(cfg: Config, lib: Library) -> Router:
             return await c.answer("Книга не найдена", show_alert=True)
         await c.answer("Готовлю файл…")
         try:
-            data = await asyncio.to_thread(lib.read, b)
+            # зависшая шара не должна вешать бота: ждём не дольше api_timeout
+            data = await asyncio.wait_for(asyncio.to_thread(lib.read, b), cfg.api_timeout)
             name = b.filename
             if fmt != b.ext:
                 data = await convert.convert(data, b.ext, fmt, cfg.ebook_convert)
                 name = name.rsplit(".", 1)[0] + f".{fmt}"
         except FileNotFoundError:
             return await c.message.answer(f"Архив {b.archive} не найден в библиотеке.")
+        except asyncio.TimeoutError:
+            return await c.message.answer(f"Хранилище не ответило за {cfg.api_timeout:g} с. Попробуйте позже.")
         except Exception as e:  # noqa: BLE001 — показываем причину пользователю
             log.exception("download failed")
             return await c.message.answer(f"Не удалось получить книгу: {esc(str(e))}")
@@ -155,7 +164,9 @@ async def amain() -> None:
     lib = Library(cfg.library_dir, cfg.db_path)
     bot = Bot(cfg.token)
     dp = Dispatcher()
-    dp.include_router(build_router(cfg, lib))
+    planner = AiPlanner(cfg.ai_model, cfg.api_timeout) if cfg.ai_search else None
+    log.info("ИИ-поиск: %s", f"{cfg.ai_model}, таймаут {cfg.api_timeout:g} с" if planner else "выключен (нет ANTHROPIC_API_KEY)")
+    dp.include_router(build_router(cfg, lib, planner))
     await dp.start_polling(bot)
 
 
